@@ -86,7 +86,22 @@ function showError(title, message) {
 
 async function main() {
   try {
-    // 1. อ่าน Query Parameter — ถ้าไม่มีให้ดึงจาก sessionStorage
+    showLoading("กำลังโหลด...");
+
+    // 1. Init LIFF ก่อนเสมอ — SDK จะถอดรหัส liff.state ให้
+    await liff.init({ liffId: LIFF_ID });
+
+    // 2. Login ถ้ายังไม่ได้ Login
+    if (!liff.isLoggedIn()) {
+      // บันทึก dashboard ไว้ก่อน login redirect
+      const p = new URLSearchParams(window.location.search);
+      const d = p.get("dashboard");
+      if (d) sessionStorage.setItem("pending_dashboard", d);
+      liff.login();
+      return;
+    }
+
+    // 3. อ่าน Query Parameter หลัง init แล้ว
     const params = new URLSearchParams(window.location.search);
     const dashboardId = params.get("dashboard") || sessionStorage.getItem("pending_dashboard");
 
@@ -96,32 +111,18 @@ async function main() {
     }
 
     if (!DASHBOARDS[dashboardId]) {
-      showError("Dashboard ไม่ถูกต้อง", `ไม่พบ Dashboard "${dashboardId}" กรุณาติดต่อผู้ดูแลระบบ`);
+      showError("Dashboard ไม่ถูกต้อง", `ไม่พบ Dashboard "${dashboardId}"`);
       return;
     }
-
-    // 2. บันทึก dashboard ไว้ก่อน เผื่อ login redirect ทำให้ param หาย
-    sessionStorage.setItem("pending_dashboard", dashboardId);
 
     const dashboardName = DASHBOARDS[dashboardId].name;
-    showLoading(`กำลังเข้าสู่ ${dashboardName}...`);
+    showLoading(`กำลังบันทึกข้อมูล...`);
 
-    // 3. Initialize LIFF
-    await liff.init({ liffId: LIFF_ID });
-
-    // 4. Login ถ้ายังไม่ได้ Login
-    if (!liff.isLoggedIn()) {
-      liff.login();
-      return;
-    }
-
-    // 5. ดึง User ID
+    // 4. ดึง User ID
     const profile = await liff.getProfile();
     const userId = profile.userId;
 
-    showLoading(`กำลังบันทึกข้อมูล...`);
-
-    // 6. ส่งข้อมูลไป Apps Script
+    // 5. ส่งข้อมูลไป Apps Script
     const url = `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(dashboardId)}`;
     const response = await fetch(url);
     const result = await response.json();
@@ -131,7 +132,7 @@ async function main() {
       return;
     }
 
-    // 7. ล้าง sessionStorage แล้ว Redirect
+    // 6. ล้าง sessionStorage แล้ว Redirect
     sessionStorage.removeItem("pending_dashboard");
     showLoading(`กำลังเปิด ${dashboardName}...`);
     window.location.href = result.redirectUrl;
@@ -140,6 +141,7 @@ async function main() {
     console.error("LIFF Error:", err);
     showError("เกิดข้อผิดพลาด", "กรุณาปิดแล้วเปิดใหม่อีกครั้ง<br>หรือติดต่อผู้ดูแลระบบ");
   }
+}
 }
 main();
 </script>
