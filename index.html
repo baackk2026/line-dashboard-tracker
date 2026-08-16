@@ -86,9 +86,9 @@ function showError(title, message) {
 
 async function main() {
   try {
-    // 1. อ่าน Query Parameter
+    // 1. อ่าน Query Parameter — ถ้าไม่มีให้ดึงจาก sessionStorage
     const params = new URLSearchParams(window.location.search);
-    const dashboardId = params.get("dashboard");
+    const dashboardId = params.get("dashboard") || sessionStorage.getItem("pending_dashboard");
 
     if (!dashboardId) {
       showError("ไม่พบข้อมูล Dashboard", "กรุณาเข้าผ่าน Rich Menu ของ LINE เท่านั้น");
@@ -100,25 +100,28 @@ async function main() {
       return;
     }
 
+    // 2. บันทึก dashboard ไว้ก่อน เผื่อ login redirect ทำให้ param หาย
+    sessionStorage.setItem("pending_dashboard", dashboardId);
+
     const dashboardName = DASHBOARDS[dashboardId].name;
     showLoading(`กำลังเข้าสู่ ${dashboardName}...`);
 
-    // 2. Initialize LIFF
+    // 3. Initialize LIFF
     await liff.init({ liffId: LIFF_ID });
 
-    // 3. Login ถ้ายังไม่ได้ Login
+    // 4. Login ถ้ายังไม่ได้ Login
     if (!liff.isLoggedIn()) {
-      liff.login({ redirectUri: window.location.href });
+      liff.login();
       return;
     }
 
-    // 4. ดึง User ID
+    // 5. ดึง User ID
     const profile = await liff.getProfile();
     const userId = profile.userId;
 
     showLoading(`กำลังบันทึกข้อมูล...`);
 
-    // 5. ส่งข้อมูลไป Apps Script
+    // 6. ส่งข้อมูลไป Apps Script
     const url = `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(dashboardId)}`;
     const response = await fetch(url);
     const result = await response.json();
@@ -128,7 +131,8 @@ async function main() {
       return;
     }
 
-    // 6. Redirect ไป Looker Studio
+    // 7. ล้าง sessionStorage แล้ว Redirect
+    sessionStorage.removeItem("pending_dashboard");
     showLoading(`กำลังเปิด ${dashboardName}...`);
     window.location.href = result.redirectUrl;
 
@@ -137,7 +141,6 @@ async function main() {
     showError("เกิดข้อผิดพลาด", "กรุณาปิดแล้วเปิดใหม่อีกครั้ง<br>หรือติดต่อผู้ดูแลระบบ");
   }
 }
-
 main();
 </script>
 </body>
