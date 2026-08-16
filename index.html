@@ -88,43 +88,60 @@ async function main() {
   try {
     showLoading("กำลังโหลด...");
 
-    // 1. Init LIFF ก่อนเสมอ — SDK จะถอดรหัส liff.state ให้
-    await liff.init({ liffId: LIFF_ID });
+    // ฟังก์ชันดึง dashboard จากทุกแหล่ง
+    function getDashboardId() {
+      const params = new URLSearchParams(window.location.search);
 
-    // 2. Login ถ้ายังไม่ได้ Login
-    if (!liff.isLoggedIn()) {
-      // บันทึก dashboard ไว้ก่อน login redirect
-      const p = new URLSearchParams(window.location.search);
-      const d = p.get("dashboard");
-      if (d) sessionStorage.setItem("pending_dashboard", d);
-      liff.login();
-      return;
+      // แหล่งที่ 1: URL ตรงๆ
+      const direct = params.get("dashboard");
+      if (direct) return direct;
+
+      // แหล่งที่ 2: liff.state (ก่อน liff.init ถอดรหัส)
+      const liffState = params.get("liff.state");
+      if (liffState) {
+        try {
+          const decoded = decodeURIComponent(liffState);
+          const stateStr = decoded.startsWith("?") ? decoded.slice(1) : decoded;
+          const stateParams = new URLSearchParams(stateStr);
+          const fromState = stateParams.get("dashboard");
+          if (fromState) return fromState;
+        } catch (e) {}
+      }
+
+      return null;
     }
 
-    // 3. อ่าน Query Parameter หลัง init แล้ว
-    const params = new URLSearchParams(window.location.search);
-    const dashboardId = params.get("dashboard") || sessionStorage.getItem("pending_dashboard");
+    // อ่าน dashboard ก่อน init
+    const dashboardId = getDashboardId();
+    if (dashboardId && DASHBOARDS[dashboardId]) {
+      sessionStorage.setItem("pending_dashboard", dashboardId);
+    }
 
-    if (!dashboardId) {
+    // Init LIFF
+    await liff.init({ liffId: LIFF_ID });
+
+    // อ่านอีกครั้งหลัง init + fallback sessionStorage
+    const finalId = getDashboardId() || sessionStorage.getItem("pending_dashboard");
+
+    if (!finalId || !DASHBOARDS[finalId]) {
       showError("ไม่พบข้อมูล Dashboard", "กรุณาเข้าผ่าน Rich Menu ของ LINE เท่านั้น");
       return;
     }
 
-    if (!DASHBOARDS[dashboardId]) {
-      showError("Dashboard ไม่ถูกต้อง", `ไม่พบ Dashboard "${dashboardId}"`);
+    // Login โดยบังคับ redirectUri ให้มี dashboard param
+    if (!liff.isLoggedIn()) {
+      const base = window.location.origin + window.location.pathname;
+      liff.login({ redirectUri: `${base}?dashboard=${finalId}` });
       return;
     }
 
-    const dashboardName = DASHBOARDS[dashboardId].name;
     showLoading(`กำลังบันทึกข้อมูล...`);
 
-    // 4. ดึง User ID
     const profile = await liff.getProfile();
     const userId = profile.userId;
 
-    // 5. ส่งข้อมูลไป Apps Script
-    const url = `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(dashboardId)}`;
-    const response = await fetch(url);
+    const apiUrl = `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(finalId)}`;
+    const response = await fetch(apiUrl);
     const result = await response.json();
 
     if (!result.success) {
@@ -132,9 +149,8 @@ async function main() {
       return;
     }
 
-    // 6. ล้าง sessionStorage แล้ว Redirect
     sessionStorage.removeItem("pending_dashboard");
-    showLoading(`กำลังเปิด ${dashboardName}...`);
+    showLoading(`กำลังเปิด ${DASHBOARDS[finalId].name}...`);
     window.location.href = result.redirectUrl;
 
   } catch (err) {
