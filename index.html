@@ -103,12 +103,17 @@ function getDashboardId() {
 }
 
 function sendLog(userId, dashboardId) {
-  // ส่ง log ผ่าน image pixel — ไม่มี CORS ไม่รอ response
-  var img = new Image();
-  img.src = APPS_SCRIPT_URL +
+  var logUrl = APPS_SCRIPT_URL +
     "?userId=" + encodeURIComponent(userId) +
     "&dashboardId=" + encodeURIComponent(dashboardId) +
     "&t=" + Date.now();
+
+  // keepalive ทำให้ request ส่งได้แม้จะ redirect ไปแล้ว
+  try {
+    fetch(logUrl, { mode: "no-cors", keepalive: true });
+  } catch(e) {
+    new Image().src = logUrl;
+  }
 }
 
 // ============================================================
