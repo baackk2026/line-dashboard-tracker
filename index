@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Access</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f4f8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px 32px;
+      text-align: center;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      max-width: 320px;
+      width: 90%;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #06c755;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title { font-size: 18px; font-weight: 600; color: #1a202c; margin-bottom: 8px; }
+    .subtitle { font-size: 14px; color: #718096; }
+    .error-icon { font-size: 48px; margin-bottom: 16px; }
+    .error-title { font-size: 18px; font-weight: 600; color: #e53e3e; margin-bottom: 8px; }
+    .error-msg { font-size: 14px; color: #718096; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div class="card" id="app">
+  <div class="spinner"></div>
+  <div class="title">กำลังโหลด...</div>
+  <div class="subtitle">กรุณารอสักครู่</div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURATION — แก้ไขค่าเหล่านี้
+// ============================================================
+
+const LIFF_ID = "YOUR_LIFF_ID_HERE"; // ← ใส่หลัง Phase 5
+
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNV8CcZQKKCG92jpTViWmdtNY134R76a2HxqrhEnBFVPzv0Mz008FFqPbdoUIiOn_Y/exec"; // ← ใส่ Web App URL จาก Phase 3
+
+const DASHBOARDS = {
+  "kpi": { name: "KPI" },
+  "4dx": { name: "4DX" },
+  "performance": { name: "ผลประกอบการ" }
+};
+
+// ============================================================
+// LIFF LOGIC — ไม่ต้องแก้ไขส่วนนี้
+// ============================================================
+
+function showLoading(message) {
+  document.getElementById("app").innerHTML = `
+    <div class="spinner"></div>
+    <div class="title">${message}</div>
+    <div class="subtitle">กรุณารอสักครู่</div>
+  `;
+}
+
+function showError(title, message) {
+  document.getElementById("app").innerHTML = `
+    <div class="error-icon">⚠️</div>
+    <div class="error-title">${title}</div>
+    <div class="error-msg">${message}</div>
+  `;
+}
+
+async function main() {
+  try {
+    // 1. อ่าน Query Parameter
+    const params = new URLSearchParams(window.location.search);
+    const dashboardId = params.get("dashboard");
+
+    if (!dashboardId) {
+      showError("ไม่พบข้อมูล Dashboard", "กรุณาเข้าผ่าน Rich Menu ของ LINE เท่านั้น");
+      return;
+    }
+
+    if (!DASHBOARDS[dashboardId]) {
+      showError("Dashboard ไม่ถูกต้อง", `ไม่พบ Dashboard "${dashboardId}" กรุณาติดต่อผู้ดูแลระบบ`);
+      return;
+    }
+
+    const dashboardName = DASHBOARDS[dashboardId].name;
+    showLoading(`กำลังเข้าสู่ ${dashboardName}...`);
+
+    // 2. Initialize LIFF
+    await liff.init({ liffId: LIFF_ID });
+
+    // 3. Login ถ้ายังไม่ได้ Login
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: window.location.href });
+      return;
+    }
+
+    // 4. ดึง User ID
+    const profile = await liff.getProfile();
+    const userId = profile.userId;
+
+    showLoading(`กำลังบันทึกข้อมูล...`);
+
+    // 5. ส่งข้อมูลไป Apps Script
+    const url = `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(dashboardId)}`;
+    const response = await fetch(url);
+    const result = await response.json();
+
+    if (!result.success) {
+      showError("บันทึกข้อมูลไม่สำเร็จ", result.message || "กรุณาลองใหม่อีกครั้ง");
+      return;
+    }
+
+    // 6. Redirect ไป Looker Studio
+    showLoading(`กำลังเปิด ${dashboardName}...`);
+    window.location.href = result.redirectUrl;
+
+  } catch (err) {
+    console.error("LIFF Error:", err);
+    showError("เกิดข้อผิดพลาด", "กรุณาปิดแล้วเปิดใหม่อีกครั้ง<br>หรือติดต่อผู้ดูแลระบบ");
+  }
+}
+
+main();
+</script>
+</body>
+</html>
