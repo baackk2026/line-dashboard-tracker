@@ -148,12 +148,15 @@ async function main() {
 
     sessionStorage.removeItem("pending_dashboard");
 
-    // ส่ง log (fire & forget ผ่าน image pixel)
+   // ส่ง log แล้วรอให้ request ส่งถึง Apps Script ก่อน redirect
     sendLog(userId, dashboardId);
 
-    // Redirect ไป Looker โดยตรง ไม่ผ่าน Apps Script
-    window.location.href = DASHBOARDS[dashboardId].url;
+    showLoading("กำลังเปิด " + DASHBOARDS[dashboardId].name + "...");
 
+    setTimeout(function() {
+      window.location.href = DASHBOARDS[dashboardId].url;
+    }, 1500);
+    
   } catch(err) {
     console.error(err);
     showError("เกิดข้อผิดพลาด", "กรุณาปิดแล้วเปิดใหม่อีกครั้ง");
