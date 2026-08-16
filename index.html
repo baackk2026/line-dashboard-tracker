@@ -1,113 +1,77 @@
-// ============================================================
-// CONFIGURATION
-// ============================================================
-const LIFF_ID = "2011130854-3vn9oGZQ"; // LIFF ID ของคุณ
-
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNV8CcZQKKCG92jpTViWmdtNY134R76a2HxqrhEnBFVPzv0Mz008FFqPbdoUIiOn_Y/exec"; // Web App URL จาก Phase 3
+const LIFF_ID = "2011130854-3vn9oGZQ";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLJiU0vuYhqXdQTAatMVtsMI_z5g1m-jytaHXJHufNCnQYPU3MtMsRwDVN7KnstyCM/exec";
 
 const DASHBOARDS = {
-  "kpi": {
-    name: "KPI",
-    url: "https://datastudio.google.com/reporting/267b8d13-b09b-4d3e-8d5d-1089a7490c92"         // ← ใส่ Looker URL จริง
-  },
-  "4dx": {
-    name: "4DX",
-    url: "https://datastudio.google.com/reporting/bf194476-1d20-4e31-add1-44ebf016ce47"         // ← ใส่ Looker URL จริง
-  },
-  "performance": {
-    name: "ผลประกอบการ",
-    url: "https://datastudio.google.com/reporting/aa30f2be-8458-4d13-baa8-a9f4055ac7b6" // ← ใส่ Looker URL จริง
-  }
+  "kpi": { name: "KPI" },
+  "4dx": { name: "4DX" },
+  "performance": { name: "ผลประกอบการ" }
 };
 
-// ============================================================
-// LIFF LOGIC
-// ============================================================
-function showLoading(message) {
+function showLoading(msg) {
   document.getElementById("app").innerHTML = `
     <div class="spinner"></div>
-    <div class="title">${message}</div>
-    <div class="subtitle">กรุณารอสักครู่</div>
-  `;
+    <div class="title">${msg}</div>
+    <div class="subtitle">กรุณารอสักครู่</div>`;
 }
 
-function showError(title, message) {
+function showError(title, msg) {
   document.getElementById("app").innerHTML = `
     <div class="error-icon">⚠️</div>
     <div class="error-title">${title}</div>
-    <div class="error-msg">${message}</div>
-  `;
+    <div class="error-msg">${msg}</div>`;
 }
 
 function getDashboardId() {
-  const params = new URLSearchParams(window.location.search);
-  const direct = params.get("dashboard");
+  const p = new URLSearchParams(window.location.search);
+  const direct = p.get("dashboard");
   if (direct) return direct;
-
-  const liffState = params.get("liff.state");
+  const liffState = p.get("liff.state");
   if (liffState) {
     try {
       const decoded = decodeURIComponent(liffState);
-      const stateStr = decoded.startsWith("?") ? decoded.slice(1) : decoded;
-      const fromState = new URLSearchParams(stateStr).get("dashboard");
-      if (fromState) return fromState;
-    } catch (e) {}
+      const s = decoded.startsWith("?") ? decoded.slice(1) : decoded;
+      return new URLSearchParams(s).get("dashboard");
+    } catch(e) {}
   }
-  return null;
+  return sessionStorage.getItem("pending_dashboard");
 }
 
 async function main() {
   try {
     showLoading("กำลังโหลด...");
 
-    // อ่าน dashboard ก่อน init
     const earlyId = getDashboardId();
-    if (earlyId && DASHBOARDS[earlyId]) {
-      sessionStorage.setItem("pending_dashboard", earlyId);
-    }
+    if (earlyId) sessionStorage.setItem("pending_dashboard", earlyId);
 
-    // Init LIFF
     await liff.init({ liffId: LIFF_ID });
 
-    // อ่าน dashboard หลัง init
-    const dashboardId = getDashboardId() || sessionStorage.getItem("pending_dashboard");
+    const dashboardId = getDashboardId();
 
     if (!dashboardId || !DASHBOARDS[dashboardId]) {
       showError("ไม่พบข้อมูล Dashboard", "กรุณาเข้าผ่าน Rich Menu ของ LINE เท่านั้น");
       return;
     }
 
-    const dashboard = DASHBOARDS[dashboardId];
-    sessionStorage.setItem("pending_dashboard", dashboardId);
-
-    // Login ถ้ายังไม่ได้ Login
     if (!liff.isLoggedIn()) {
       const base = window.location.origin + window.location.pathname;
       liff.login({ redirectUri: `${base}?dashboard=${dashboardId}` });
       return;
     }
 
-    showLoading(`กำลังบันทึกข้อมูล...`);
+    showLoading(`กำลังเข้าสู่ ${DASHBOARDS[dashboardId].name}...`);
 
-    // ดึง User ID
     const profile = await liff.getProfile();
     const userId = profile.userId;
 
-    // ส่ง log แบบ Fire & Forget — ไม่รอ response ไม่ติด CORS
-    const logUrl = `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(dashboardId)}`;
-    fetch(logUrl, { mode: "no-cors" }).catch(() => {});
-
-    // Redirect ทันที
     sessionStorage.removeItem("pending_dashboard");
-    showLoading(`กำลังเปิด ${dashboard.name}...`);
 
-    setTimeout(() => {
-      window.location.href = dashboard.url;
-    }, 800);
+    // Redirect ไป Apps Script — Apps Script log แล้ว redirect ต่อไป Looker
+    window.location.href =
+      `${APPS_SCRIPT_URL}?userId=${encodeURIComponent(userId)}&dashboardId=${encodeURIComponent(dashboardId)}`;
 
-  } catch (err) {
-    console.error("LIFF Error:", err);
-    showError("เกิดข้อผิดพลาด", "กรุณาปิดแล้วเปิดใหม่อีกครั้ง<br>หรือติดต่อผู้ดูแลระบบ");
+  } catch(err) {
+    console.error(err);
+    showError("เกิดข้อผิดพลาด", "กรุณาปิดแล้วเปิดใหม่อีกครั้ง");
   }
 }
 
